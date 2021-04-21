@@ -1,0 +1,575 @@
+---
+title: "R-GHGs_Project"
+author: "Surya Vaddhiparthy"
+date: "12/04/2021"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+         **International Greenhouse Gas Emissions Data Analysis**
+
+We have used the Greenhouse Gas (GHG) Inventory Data with the most recently submitted information, it has data from 1990 to the latest available year, it contains information on anthropogenic emissions (emissions from fossil fuels, deforestation, land use changes, livestock, fertilization) It consists data on unspecified mix of HFCs and PFCs, sulphur hexafluoride (SF6) and nitrogen triflouride (NF3)) that are not within the scope of Montreal Protocol, an international agreement in 1987, aimed at curbing the of ozone depleting substances.
+
+
+**1.Data Loading**
+The dataset here consists the values of different gas for different countries from 1990 to 2018.
+
+In details, these are information on anthropogenic emissions by sources and removals by sinks of the following GHGs:
+carbon dioxide (CO2)
+methane (CH4)
+nitrous oxide (N2O)
+hydrofluorocarbons (HFCs)
+perfluorocarbons (PFCs)
+unspecified mix of HFCs and PFCs
+sulphur hexafluoride (SF6)
+nitrogen triflouride (NF3)
+
+Let's load the data and loading all the required packages for the analysis
+```{r}
+library(dplyr)
+library(ggplot2)
+
+dataset <- read.csv("greenhouse_gas_inventory_data_data.csv",sep=',',stringsAsFactors = FALSE)
+head(dataset)
+
+```
+**2.Data Cleaning**
+```{r}
+#checking the dimensions of the dataset
+dim(dataset)
+str(dataset)
+```
+there are 9688 observations(rows) and 4 parameters (columns) in the dataset and in columns it have 3 char type variables 
+
+```{r}
+#checking is there any missing values in the dataset
+any(is.na(dataset))
+
+```
+#it seems there are no missing values in the dataset
+
+if we look at the dataset the 'category' variable. it has very large value names which quiet messy to do analysis so let's rename the values without losing it's original meaning and making easier to interpret in plots also
+```{r}
+dataset<-dataset %>% mutate(category=recode(category, 
+                                  carbon_dioxide_co2_emissions_without_land_use_land_use_change_and_forestry_lulucf_in_kilotonne_co2_equivalent='CO2',
+                                  greenhouse_gas_ghgs_emissions_including_indirect_co2_without_lulucf_in_kilotonne_co2_equivalent='GHG_indirect_CO2',
+                                  greenhouse_gas_ghgs_emissions_without_land_use_land_use_change_and_forestry_lulucf_in_kilotonne_co2_equivalent='GHG',
+                                  hydrofluorocarbons_hfcs_emissions_in_kilotonne_co2_equivalent='HFC',
+                                  methane_ch4_emissions_without_land_use_land_use_change_and_forestry_lulucf_in_kilotonne_co2_equivalent='CH4',
+                                  nitrogen_trifluoride_nf3_emissions_in_kilotonne_co2_equivalent='HF3',
+                                  nitrous_oxide_n2o_emissions_without_land_use_land_use_change_and_forestry_lulucf_in_kilotonne_co2_equivalent='N2Os',
+                                  perfluorocarbons_pfcs_emissions_in_kilotonne_co2_equivalent='PFCs',
+                                  sulphur_hexafluoride_sf6_emissions_in_kilotonne_co2_equivalent='SF6',
+                                  unspecified_mix_of_hydrofluorocarbons_hfcs_and_perfluorocarbons_pfcs_emissions_in_kilotonne_co2_equivalent='HFC-PFC-mix'))
+
+head(dataset)
+```
+
+checking Number of countries that are contributing the gases emission 
+```{r}
+n_distinct(dataset$country_or_area)
+
+```
+#there are total 44 unique countries are there in the dataset
+
+```{r}
+#renaming the column 'country_or_area_ to 'country' for ease of use
+
+dataset <- dataset %>% rename( country = country_or_area)
+
+```
+
+```{r}
+#changing all the values in the country column to the lower case for ease of use
+dataset$country <- tolower(dataset$country)
+
+#changing few longer country names to shorter form
+dataset[dataset$country=='russian federation','country'] <-'russia'
+dataset[dataset$country=='united kingdom','country'] <-'uk'
+dataset[dataset$country=='united states of america','country'] <-'usa'
+
+unique(dataset$country)
+```
+let's remove the value european union which is mix of countries, we are analyzing country wise so it's better to remove and keep it in a single layer level analysis.
+```{r}
+
+dataset <- dataset %>% filter(country!='european union')
+unique(dataset$country)
+```
+finally let's change the value column to numeric for the analysis 
+```{r}
+#while converting data from char to numeric we might get NA values because some of our input values are not formatted properly, because they contain commas (i.e. ,) between the numbers. We can remove these commas by using the gsub function.
+dataset$value <- gsub(",","",dataset$value)
+dataset$value <- as.numeric(dataset$value)
+str(dataset)
+
+```
+
+
+**3.Data analysis**
+
+let's find out the total emission per gas that has been released in the total years from 1990 to 2018
+```{r}
+total_emissions <- dataset %>% group_by(category) %>%summarise(sum(value))
+#arrange the data in descending order 
+colnames(total_emissions)[2] <- "total_value"#changing name of column
+total_emissions <- total_emissions %>% arrange(desc(`total_value`))#ordering the data in descending order
+total_emissions
+```
+
+
+```{r}
+ggplot(total_emissions, aes(x=reorder(category,-total_value), y=total_value)) +
+    geom_bar(stat="identity", fill="red", alpha=.8, width=.4) +
+    xlab("Gas type") +
+    ylab("In kilotons equivalent (log10)")+
+    ggtitle("Total emissions by each gas from 1990-2018")+
+    theme_bw()+
+  coord_flip(expand = TRUE)#rotate the axis to avoid data overlapping
+
+```
+As in the above plot it's clearly showing that "GHG" is the highest emission around the world, followed by "GHG_indirect_CO2" as second highest and next order is in "CO2", "CH4" and "N2Os". These are the top five emissions from the year 1990 -2018 around the world.
+
+#now let's look at the total contribution of all gases over the years. 
+```{r}
+#group the data by category and year
+Total_contribution_per_year <- dataset %>% group_by(category,year) %>% 
+  summarize(total_value = sum(value),.groups = 'drop')
+#now visualizing the grouped data 
+ggplot(Total_contribution_per_year, aes(x=factor(year),y=total_value,group=category)) + geom_line(aes(color=category),size=1.2) + 
+  geom_point(size=.7,color='black') +
+  scale_color_brewer(name='',palette='Paired') + 
+  theme(legend.position='top') + 
+  theme(axis.text.x = element_text(size=9,angle=45),
+        legend.text=element_text(size=9)) + 
+  labs(title='International Greenhouse gas emissions')+
+  guides(color=guide_legend(ncol=3))
+
+
+```
+by looking at the above graph, 'GHG','GHG_indirect_CO2' and 'CO2' are the most emissioned gas over the past years and there is a substantial drop of ''GHG_indirect_gas' from the year 2015 to 2018 and few gases have a little amount of ups and downs from where they started but they continued on the same level so far.
+
+#let's visualize which countries caused highest emissions per each gas and for deeper analysis,let's visualise the top 4 gases that are produced by entire world over the years.
+**the top 4 are**
+1.GHG
+2.GHG_indirect_CO2
+3.CO2
+4.CH4
+
+# 1. Analysis of "GHG" gas emission
+```{r}
+#selecting a subset of data that only contains "GHG" gas emission
+GHG_data <- dataset[dataset$category=='GHG',]
+#grouping by each country to know which countries produced highest GHG
+GHG_by_country <- GHG_data%>% group_by(country) %>%summarise(sum(value))
+colnames(GHG_by_country)[2] <- "total_value"#changing name of column
+GHG_by_country <- GHG_by_country %>% arrange(desc(total_value))
+
+```
+
+
+```{r}
+ggplot(GHG_by_country, aes(x= reorder(country, -total_value), y=total_value)) +
+    geom_bar(stat="identity", fill="maroon2", alpha=1, width=.4) +
+    xlab("Country") +
+    ylab("Value")+
+    ggtitle("Total emission of 'GHG' by each country from 1990-2018")+
+  coord_flip(expand = TRUE)
+    
+```
+countries-- usa,russia,japan,germany, canada ,uk and france are at top and all of these combine contributing a major chunk of 'GHG' emission.
+
+```{r}
+pie <- ggplot(GHG_by_country,aes(x="",y=total_value,fill = country))+
+  geom_bar(stat = "identity",colour="gray")
+pie+coord_polar("y", start=0,direction = 1)+
+  ggtitle("Total 'GHG' emission by Country",subtitle = "from the year 1990 -2018")
+
+```
+
+
+
+# 2. Analysis of "GHG_indirect_CO2" gas emission
+```{r,fig.width=6, fig.height=4}
+#selecting a subset of data that only contains "GHG" gas emission
+GHG_indirect_CO2 <- dataset[dataset$category=='GHG_indirect_CO2',]
+#grouping by each country to know which countries produced highest GHG
+GHG_indirect_country <- GHG_indirect_CO2%>% group_by(country) %>%summarise(total_value = sum(value),.groups = 'drop')
+GHG_indirect_country <- GHG_indirect_country %>% arrange(desc(total_value))
+
+#visualising the GHG_indirect_CO2
+ggplot(GHG_indirect_country, aes(x= reorder(country, -total_value), y=total_value)) +
+    geom_bar(stat="identity", fill="blue", alpha=1, width=.4) +
+    xlab("Country") +
+    ylab("Value")+
+    ggtitle("Total emission of 'GHG_indirect_CO2' by each country from 1990-2018")+
+  coord_flip(expand = TRUE)
+
+```
+
+
+countries-- usa,russia,japan,germany, canada,france and italy are at top and all of these combine contributing a major chunk of 'GHG_indirect_CO2' emission.
+```{r}
+pie <- ggplot(GHG_indirect_country,aes(x="",y=total_value,fill = country))+
+  geom_bar(stat = "identity",colour="gray")
+pie+coord_polar("y", start=0,direction = 1)+
+  ggtitle("Total 'GHG_indirect_CO2' by Country",subtitle = "from the year 1990 -2018")
+```
+
+
+
+**3.Analysis of CO2 emission**
+
+```{r}
+#selecting a subset of data that only contains "CO2" gas emission
+CO2_data <- dataset[dataset$category=='CO2',]
+#grouping by each country to know which countries produced highest GHG
+CO2_by_country <- CO2_data%>% group_by(country) %>%summarise(total_value = sum(value),.groups = 'drop')
+CO2_by_country <- CO2_by_country %>% arrange(desc(total_value))
+
+#visualising the GHG_indirect_CO2
+ggplot(CO2_by_country, aes(x= reorder(country, -total_value), y=total_value)) +
+    geom_bar(stat="identity", fill="darkgreen", alpha=1, width=.4) +
+    xlab("Country") +
+    ylab("Value")+
+    ggtitle("Total emission of 'CO2' by each country from 1990-2018")+
+  coord_flip(expand = TRUE)
+
+```
+the Top 'CO2' emission countries are = usa,russia,japan,germany,canada,uk and italy
+
+```{r}
+pie <- ggplot(CO2_by_country,aes(x="",y=total_value,fill = country))+
+  geom_bar(stat = "identity",colour="gray")
+pie+coord_polar("y", start=0,direction = 1)+
+  ggtitle("Total 'CO2' by Country",subtitle = "from the year 1990 -2018")
+
+```
+**analysis of 'CH4'**
+```{r}
+#selecting a subset of data that only contains "CO2" gas emission
+CH4_data <- dataset[dataset$category=='CH4',]
+#grouping by each country to know which countries produced highest GHG
+CH4_by_country <- CH4_data%>% group_by(country) %>%summarise(total_value = sum(value),.groups = 'drop')
+CH4_by_country <- CH4_by_country %>% arrange(desc(total_value))
+
+#visualising the GHG_indirect_CO2
+ggplot(CH4_by_country, aes(x= reorder(country, -total_value), y=total_value)) +
+    geom_bar(stat="identity", fill="cyan4", alpha=1, width=.4) +
+    xlab("Country") +
+    ylab("Value")+
+    ggtitle("Total emission of 'CH4' by each country from 1990-2018")+
+  coord_flip(expand = TRUE)
+
+```
+the Top 'CH4' emission countries are = usa,russia,ukraine,canada,australia,uk and germany
+```{r}
+pie <- ggplot(CH4_by_country,aes(x="",y=total_value,fill = country))+
+  geom_bar(stat = "identity",colour="gray")
+pie+coord_polar("y", start=0,direction = 1)+
+  ggtitle("Total 'CH4' by Country",subtitle = "from the year 1990 -2018")+
+  ylab("In kilotons equivalent")
+
+```
+let's look at the top countries for the top 4 emissioned gases.
+
+```{r}
+#subset the top seven 7 countries for each of high emissioned gas
+category <- c('ghg','ghg','ghg','ghg','ghg','ghg','ghg')
+GHG_top_countries <- data.frame(GHG_by_country[c(1:7),],category)
+```
+
+```{r}
+#adding a new column for each type of gas 
+category <- c('ghg_indirect_co2','ghg_indirect_co2','ghg_indirect_co2','ghg_indirect_co2','ghg_indirect_co2','ghg_indirect_co2','ghg_indirect_co2')
+GHG_indirect_top <- data.frame(GHG_indirect_country[c(1:7),],category)
+```
+
+```{r}
+#adding a new column for each type of gas 
+category <- c('co2','co2','co2','co2','co2','co2','co2')
+CO2_top_countries <- data.frame(CO2_by_country[c(1:7),],category)
+```
+
+```{r}
+#adding a new column for each type of gas 
+category <-c('ch4','ch4','ch4','ch4','ch4','ch4','ch4')
+CH4_top_countries <-data.frame(CH4_by_country[c(1:7),],category)
+
+```
+
+```{r}
+#using rbind we can combine all the data and make it visualize clearly
+total_top_countries <- rbind(GHG_top_countries,GHG_indirect_top,CO2_top_countries,CH4_top_countries)
+```
+
+```{r}
+#plotting all the top gases and country's each contribution
+col_chart<- ggplot(data = total_top_countries)+
+  geom_col(mapping = aes(x = reorder(country, -total_value), y = total_value, fill = category))+
+  theme(axis.text.x = element_text(size=10),
+        legend.text=element_text(size=10))+
+  xlab("Country")+
+  ylab("In kilotons equivalent")+
+  ggtitle("Combine highest gas producing countries")
+col_chart
+
+```
+
+```{r}
+#changing the bars to individual
+ggplot(data = total_top_countries)+
+  geom_col(mapping = aes(x = reorder(country, -total_value), y = total_value, fill = category),position = "dodge")+
+  xlab("Country")+
+  ylab("In kilotons equivalent")+
+  ggtitle("Combine highest gas producing countries")
+```
+ 
+from above plot we can clearly see that countries "USA","Russia","Japan" and  "Germany" contributing a high portion of these gases and keeping these observations in mind now let's look at these four countries individual gas emissions over the years.
+
+**USA emissions from 1990 to 2018**
+```{r}
+#analysis of USA country emissions 
+usa_emissions <- dataset[dataset$country=='usa',] #selecting data for a single country
+usa_emissions %>% group_by(category, year) %>% #grouping category and year together
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=year,y=total_value, col=category ))+#plotting a line plot
+  geom_line(na.rm=TRUE, size=1)+
+  geom_point(size=.5,alpha = .5,color = "black")+
+  scale_color_brewer(name='',palette='Paired')+
+  theme_minimal()+
+  labs(title='USA Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')+
+  xlab('year')+ylab('')
+
+
+```
+
+```{r}
+
+```
+
+```{r,fig.width=12}
+#visualizing bar plot to know the portion of each emission gases and compare with each other
+ usa_emissions %>% group_by(category, year) %>% 
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=category, y=total_value,fill = category))+
+  geom_col(width = .6)+
+  theme(axis.text.x = element_text(size=10))+#increasing the length of x axis text
+  xlab("Category")+
+  ylab("In kilotons equivalent")+
+  labs(title='USA Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')
+  
+
+```
+
+```{r,warning=FALSE,message=FALSE}
+#lets find out the % of emission of each USA gases from 1990 to 2018
+usa_gas_wise_total <- usa_emissions%>% group_by(category) %>%summarise(total_value = sum(value),.groups = 'drop')
+#find the sum of total country gas emission
+usa_sum <- sum(usa_gas_wise_total$total_value)
+#create a column name 'emission_percentage and calculate the % of contribution'
+usa_percentage <- mutate(usa_gas_wise_total, usa_emission_percentage = (usa_gas_wise_total$total_value/usa_sum)*100)%>% mutate_at(vars(usa_emission_percentage), funs(round(., 2)))
+usa_percentage
+
+```
+
+**Russia emissions from 1990 to 2018**
+```{r}
+#analysis of Russia country emissions 
+russia_emissions <- dataset[dataset$country=='russia',] #selecting data for a single country
+russia_emissions %>% group_by(category, year) %>% #grouping category and year together
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=year,y=total_value, col=category ))+#plotting a line plot
+  geom_line(na.rm=TRUE, size=1)+
+  geom_point(size=.5,alpha = .5,color = "black")+
+  scale_color_brewer(name='',palette='Paired')+
+  theme_minimal()+
+  labs(title='Russia Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')+
+  xlab('year')+ylab('')
+```
+
+```{r,fig.width=12}
+#visualizing bar plot to know the portion of each emission gases and compare with each other
+ russia_emissions %>% group_by(category, year) %>% 
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=category, y=total_value,fill = category))+
+  geom_col(width = .6)+
+  theme(axis.text.x = element_text(size=10))+#increasing the length of x axis text
+  xlab("Category")+
+  ylab("In kilotons equivalent")+
+  labs(title='Russia Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')
+
+```
+
+```{r,warning=FALSE,message=FALSE}
+#lets find out the % of emission of each Russia gases from 1990 to 2018
+russia_gas_wise_total <- russia_emissions%>% group_by(category) %>%summarise(total_value = sum(value),.groups = 'drop')
+#find the sum of total country gas emission
+russia_sum <- sum(russia_gas_wise_total$total_value)
+#create a column name 'emission_percentage and calculate the % of contribution'
+russia_percentage <- mutate(russia_gas_wise_total, russia_emission_percentage = (russia_gas_wise_total$total_value/russia_sum)*100)%>% mutate_at(vars(russia_emission_percentage), funs(round(., 2)))
+russia_percentage
+
+```
+**Japan emissions from 1990 to 2018**
+```{r}
+#analysis of Japan country emissions 
+japan_emissions <- dataset[dataset$country=='japan',] #selecting data for a single country
+japan_emissions %>% group_by(category, year) %>% #grouping category and year together
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=year,y=total_value, col=category ))+#plotting a line plot
+  geom_line(na.rm=TRUE, size=1)+
+  geom_point(size=.5,alpha = .5,color = "black")+
+  scale_color_brewer(name='',palette='Paired')+
+  theme_minimal()+
+  labs(title='Japan Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')+
+  xlab('year')+ylab('')
+```
+
+```{r,fig.width=12}
+#visualizing bar plot to know the portion of each emission gases and compare with each other
+ japan_emissions %>% group_by(category, year) %>% 
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=category, y=total_value,fill = category))+
+  geom_col(width = .6)+
+  theme(axis.text.x = element_text(size=10))+#increasing the length of x axis text
+  xlab("Category")+
+  ylab("In kilotons equivalent")+
+  labs(title='Japan Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')
+
+```
+
+
+```{r}
+#lets find out the % of emission of each Japan gases from 1990 to 2018
+japan_gas_wise_total <- japan_emissions%>% group_by(category) %>%summarise(total_value = sum(value),.groups = 'drop')
+#find the sum of total country gas emission
+japan_sum <- sum(japan_gas_wise_total$total_value)
+#create a column name 'emission_percentage and calculate the % of contribution'
+japan_percentage <- mutate(japan_gas_wise_total, japan_emission_percentage = (japan_gas_wise_total$total_value/japan_sum)*100)%>% mutate_at(vars(japan_emission_percentage), funs(round(., 2)))
+japan_percentage
+
+```
+
+
+**Germany emissions from 1990 to 2018**
+```{r}
+#analysis of Germany country emissions 
+germany_emissions <- dataset[dataset$country=='germany',] #selecting data for a single country
+germany_emissions %>% group_by(category, year) %>% #grouping category and year together
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=year,y=total_value, col=category ))+#plotting a line plot
+  geom_line(na.rm=TRUE, size=1)+
+  geom_point(size=.5,alpha = .5,color = "black")+
+  scale_color_brewer(name='',palette='Paired')+
+  theme_minimal()+
+  labs(title='Germany Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')+
+  xlab('year')+ylab('')
+
+```
+
+```{r,fig.width=12}
+#visualizing bar plot to know the portion of each emission gases and compare with each other
+ germany_emissions %>% group_by(category, year) %>% 
+  summarise(total_value=sum(value),.groups = 'drop')%>%
+  ggplot(aes(x=category, y=total_value,fill = category))+
+  geom_col(width = .6)+
+  theme(axis.text.x = element_text(size=10))+#increasing the length of x axis text
+  xlab("Category")+
+  ylab("In kilotons equivalent")+
+  labs(title='Germany Gas Emissions',
+       subtitle= 'in kilotons , from 1990-2018')
+
+```
+```{r}
+#lets find out the % of emission of each Japan gases from 1990 to 2018
+germany_gas_wise_total <- germany_emissions%>% group_by(category) %>%summarise(total_value = sum(value),.groups = 'drop')
+#find the sum of total country gas emission
+germany_sum <- sum(germany_gas_wise_total$total_value)
+#create a column name 'emission_percentage and calculate the % of contribution'
+germany_percentage <- mutate(germany_gas_wise_total, germany_emission_percentage = (germany_gas_wise_total$total_value/germany_sum)*100)%>% mutate_at(vars(germany_emission_percentage), funs(round(., 2)))
+germany_percentage
+
+```
+
+**Total emission of gases around the world from 1990-2018 and each country's share %**
+```{r}
+total_gases_by_each_country <- dataset%>% group_by(country) %>%summarise(total_value = sum(value),.groups = 'drop')
+#find the sum of total country gas emission
+total_sum <- sum(total_gases_by_each_country$total_value)
+#create a column name 'emission_percentage and calculate the % of contribution'
+each_country_percentage <- mutate(total_gases_by_each_country, country_emission_percentage = (total_gases_by_each_country$total_value/total_sum)*100)%>% mutate_at(vars(country_emission_percentage), funs(round(., 2)))
+#sorting the data from highest to lowest using order
+each_country_percentage<- each_country_percentage[order(each_country_percentage$country_emission_percentage,decreasing = TRUE),]
+
+each_country_percentage
+
+```
+
+#Top 4 countries vs all other countries contribution
+```{r}
+#selecting top 4 countries data
+top_4_countries <- each_country_percentage[1:4,]
+
+#selcting remaining all other countries sum of 'total_value' and emission percentage
+remaining_39_countries <- each_country_percentage[5:43,]
+total_value <- sum(remaining_39_countries$total_value)
+country_emission_percentage <- sum(remaining_39_countries$country_emission_percentage)
+country <- "All other countries"
+rest_of_countries_data <- data.frame(country,total_value,country_emission_percentage)
+final_data <- rbind(top_4_countries,rest_of_countries_data)
+final_data
+
+```
+
+```{r}
+#graphical representation of top 4 countries VS all other countries
+pie <- ggplot(final_data,aes(x="",y=country_emission_percentage,fill = country))+
+  geom_bar(stat = "identity",colour="gray")
+pie+coord_polar("y", start=0,direction = 1)+
+  geom_text(aes(label = country_emission_percentage), position = position_stack(vjust = 0.5))+
+  ggtitle("top 4 countries vs all other countries",subtitle = "from the year 1990 -2018")+
+  ylab("In emission %")
+```
+
+**key findings and conclusions**
+
+
+```{r}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
